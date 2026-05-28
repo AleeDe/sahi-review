@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getBusinessBySlug } from "@/lib/supabase/cached";
 
 export const dynamic = "force-dynamic";
 
@@ -12,38 +13,40 @@ export default async function DashboardOverview({ params }: Props) {
   // eslint-disable-next-line react-hooks/purity -- intentional time-based query in dynamic RSC
   const now = Date.now();
   const { slug } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const { data: business } = await supabase
-    .from("businesses")
-    .select(
-      "id, name, slug, subscription_status, plan, monthly_amount, currency, trial_ends_at, subscription_started_at, subscription_ends_at",
-    )
-    .eq("slug", slug)
-    .maybeSingle();
+  const business = await getBusinessBySlug(slug);
   if (!business) notFound();
+  const supabase = await createSupabaseServerClient();
 
   const monthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
   const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [{ data: monthRows }, { count: weekCount }, { count: totalCount }] =
-    await Promise.all([
-      supabase
-        .from("feedback")
-        .select("rating, redirected_to_google")
-        .eq("business_id", business.id)
-        .gte("created_at", monthAgo),
-      supabase
-        .from("feedback")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", business.id)
-        .gte("created_at", weekAgo),
-      supabase
-        .from("feedback")
-        .select("id", { count: "exact", head: true })
-        .eq("business_id", business.id),
-    ]);
+  const [
+    { data: monthRows },
+    { count: weekCount },
+    { count: totalCount },
+    { data: recent },
+  ] = await Promise.all([
+    supabase
+      .from("feedback")
+      .select("rating, redirected_to_google")
+      .eq("business_id", business.id)
+      .gte("created_at", monthAgo),
+    supabase
+      .from("feedback")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", business.id)
+      .gte("created_at", weekAgo),
+    supabase
+      .from("feedback")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", business.id),
+    supabase
+      .from("feedback")
+      .select("id, rating, comment, customer_name, created_at")
+      .eq("business_id", business.id)
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ]);
 
   const ratings = monthRows ?? [];
   const avg =
@@ -54,13 +57,6 @@ export default async function DashboardOverview({ params }: Props) {
   const conversion =
     ratings.length > 0 ? Math.round((positive / ratings.length) * 100) : 0;
   const sentToGoogle = ratings.filter((r) => r.redirected_to_google).length;
-
-  const { data: recent } = await supabase
-    .from("feedback")
-    .select("id, rating, comment, customer_name, created_at")
-    .eq("business_id", business.id)
-    .order("created_at", { ascending: false })
-    .limit(5);
 
   return (
     <div className="space-y-8">

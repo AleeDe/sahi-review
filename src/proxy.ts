@@ -1,53 +1,44 @@
 // Next.js 16: middleware → proxy
+//
+// This is a fast cookie-presence gate. The real auth check (and token
+// validation) happens in layouts/pages via getCurrentUser(), which calls
+// supabase.auth.getUser() with React cache() so it runs at most once per
+// request. Calling getUser() here too added ~300–2000ms per navigation
+// because it round-trips to Supabase Auth — we skip it on purpose.
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+
+function hasSupabaseSession(request: NextRequest): boolean {
+  for (const c of request.cookies.getAll()) {
+    if (c.name.startsWith("sb-") && c.name.endsWith("-auth-token")) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
+  const hasSession = hasSupabaseSession(request);
 
   const isProtected =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/onboarding");
 
-  if (isProtected && !user) {
+  if (isProtected && !hasSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
 
-  if (pathname === "/login" && user) {
+  if (pathname === "/login" && hasSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 
-  return response;
+  return NextResponse.next({ request });
 }
 
 export const config = {

@@ -6,7 +6,7 @@ create extension if not exists citext;
 create table businesses (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(name) between 1 and 120),
-  slug citext not null unique check (slug ~ '^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])?$'),
+  slug citext not null unique check (slug ~ '^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$'),
   google_place_id text,
   google_rating_cached numeric(2,1) check (google_rating_cached between 0 and 5),
   google_review_count_cached int default 0 check (google_review_count_cached >= 0),

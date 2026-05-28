@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getBusinessBySlug } from "@/lib/supabase/cached";
 import { QrDownload } from "./qr-download";
 
 export const dynamic = "force-dynamic";
@@ -8,12 +8,7 @@ type Props = { params: Promise<{ slug: string }> };
 
 export default async function QrPage({ params }: Props) {
   const { slug } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: business } = await supabase
-    .from("businesses")
-    .select("slug, name")
-    .eq("slug", slug)
-    .maybeSingle();
+  const business = await getBusinessBySlug(slug);
   if (!business) notFound();
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";

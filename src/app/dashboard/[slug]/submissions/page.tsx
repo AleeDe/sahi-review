@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getBusinessBySlug } from "@/lib/supabase/cached";
 
 export const dynamic = "force-dynamic";
 
@@ -17,15 +18,9 @@ export default async function Submissions({ params, searchParams }: Props) {
   const ratingFilter = rating ? parseInt(rating, 10) : null;
   const daysFilter = days ? parseInt(days, 10) : null;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const { data: business } = await supabase
-    .from("businesses")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
+  const business = await getBusinessBySlug(slug);
   if (!business) notFound();
+  const supabase = await createSupabaseServerClient();
 
   let query = supabase
     .from("feedback")

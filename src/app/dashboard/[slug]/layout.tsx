@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getBusinessBySlug, getCurrentUser } from "@/lib/supabase/cached";
 import { DashboardShell } from "../dashboard-shell";
 
 type Props = {
@@ -9,15 +9,11 @@ type Props = {
 
 export default async function DashboardSlugLayout({ params, children }: Props) {
   const { slug } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const [user, business] = await Promise.all([
+    getCurrentUser(),
+    getBusinessBySlug(slug),
+  ]);
   if (!user) redirect(`/login?redirect=/dashboard/${slug}`);
-
-  const { data: business } = await supabase
-    .from("businesses")
-    .select("id, name, slug, owner_user_id, subscription_status, trial_ends_at")
-    .eq("slug", slug)
-    .maybeSingle();
   if (!business) notFound();
 
   const isAdmin =
